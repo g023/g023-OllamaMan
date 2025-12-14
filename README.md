@@ -32,9 +32,9 @@ Ollama is an open-source platform that enables running large language models loc
 - **Quick Actions**: One-click access to common operations
 
 #### 📦 Model Manager
-- **Model Library**: Browse available models from Ollama's registry
-- **Download Management**: Pull models with progress tracking
-- **Model Operations**: Copy, delete, and inspect model details
+- **Model Library**: Browse available models from the connected Ollama server
+- **Download Management**: Pull models
+- **Model Operations**: Delete, and inspect model details
 - **Search and Filter**: Find models by name or capabilities
 
 #### 💬 Advanced Chat Interface
