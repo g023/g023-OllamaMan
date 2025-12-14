@@ -276,6 +276,47 @@ class OllamaAPI {
     }
     
     /**
+     * Create a model with advanced options (using modern API format)
+     * 
+     * @param string $name Name for the new model
+     * @param string $from Base model to create from
+     * @param array $parameters Dictionary of parameters (temperature, num_ctx, etc.)
+     * @param string $system System prompt (optional)
+     * @param string $template Prompt template (optional)
+     * @param array $messages Array of message objects for conversation examples (optional)
+     * @return array API response
+     */
+    public function createModelAdvanced($name, $from, $parameters = [], $system = null, $template = null, $messages = null) {
+        $data = [
+            'model' => $name,
+            'from' => $from,
+            'stream' => false
+        ];
+        
+        // Add parameters if provided
+        if (!empty($parameters)) {
+            $data['parameters'] = $parameters;
+        }
+        
+        // Add system prompt if provided
+        if (!empty($system)) {
+            $data['system'] = $system;
+        }
+        
+        // Add template if provided
+        if (!empty($template)) {
+            $data['template'] = $template;
+        }
+        
+        // Add messages if provided (for conversation examples)
+        if (!empty($messages) && is_array($messages)) {
+            $data['messages'] = $messages;
+        }
+        
+        return $this->request('/api/create', 'POST', $data, OLLAMA_TIMEOUT_PULL);
+    }
+    
+    /**
      * Format bytes to human readable
      */
     private function formatBytes($bytes) {

@@ -525,26 +525,973 @@
         },
 
         copyModel: function(sourceName) {
-            const destName = prompt('Enter new name for the copied model:', sourceName + '-copy');
-            if (!destName) return;
+            // Open the Model Creator window with the source model pre-selected
+            this.showWindow('modelcreator');
+            $('#creator-source-model').val(sourceName);
+            this.loadSourceModelForCreator();
+            $('#creator-new-name').val(sourceName + '-custom').focus();
+        },
+
+        // ============================================
+        // MODEL CREATOR
+        // ============================================
+        
+        // Default parameter values for reference
+        defaultParams: {
+            temperature: 0.8,
+            num_ctx: 2048,
+            num_predict: -1,
+            seed: 0,
+            top_k: 40,
+            top_p: 0.9,
+            min_p: 0.0,
+            typical_p: 1.0,
+            repeat_penalty: 1.1,
+            repeat_last_n: 64,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0
+        },
+        
+        // Parameter templates for quick setup
+        parameterTemplates: {
+            creative: {
+                name: 'Creative Writing',
+                params: {
+                    temperature: 1.2,
+                    top_p: 0.95,
+                    top_k: 60,
+                    repeat_penalty: 1.0,
+                    presence_penalty: 0.5
+                }
+            },
+            code: {
+                name: 'Code Generation',
+                params: {
+                    temperature: 0.2,
+                    top_p: 0.9,
+                    top_k: 10,
+                    repeat_penalty: 1.1,
+                    seed: 42
+                }
+            },
+            precise: {
+                name: 'Precise Answers',
+                params: {
+                    temperature: 0.1,
+                    top_p: 0.85,
+                    top_k: 5,
+                    seed: 42,
+                    repeat_penalty: 1.2
+                }
+            },
+            balanced: {
+                name: 'Balanced (Defaults)',
+                params: {
+                    temperature: 0.8,
+                    top_p: 0.9,
+                    top_k: 40,
+                    repeat_penalty: 1.1
+                }
+            }
+        },
+        
+        // Store source model parameters for comparison
+        sourceModelParams: {},
+        
+        loadSourceModelForCreator: function() {
+            const modelName = $('#creator-source-model').val();
+            if (!modelName) {
+                this.showNotification('warning', 'Select Model', 'Please select a source model first');
+                return;
+            }
+            
+            const $sourceParams = $('#creator-source-params');
+            $sourceParams.html('<div class="loading-spinner" style="margin: 40px auto;"></div>');
+            
+            $.get(this.api.models + '?action=show&model=' + encodeURIComponent(modelName))
+                .done((response) => {
+                    if (response.success) {
+                        this.sourceModelParams = response.data.parameters || {};
+                        this.sourceModelData = response.data; // Store full model data
+                        
+                        // Debug logging
+                        console.log('Model data:', response.data);
+                        console.log('Parameters:', this.sourceModelParams);
+                        console.log('Modelfile:', response.data.modelfile);
+                        
+                        // Parse stop sequences from modelfile
+                        if (response.data.modelfile) {
+                            const stopSequences = this.parseStopSequencesFromModelfile(response.data.modelfile);
+                            if (stopSequences.length > 0) {
+                                this.sourceModelParams.stop = stopSequences;
+                            }
+                        }
+                        
+                        // Extract template from modelfile
+                        if (response.data.modelfile && !this.sourceModelParams.template) {
+                            const templateMatch = response.data.modelfile.match(/TEMPLATE\s+"""([\s\S]*?)"""/)
+                                || response.data.modelfile.match(/TEMPLATE\s+"([^"]+)"/);
+                            if (templateMatch) {
+                                this.sourceModelParams.template = templateMatch[1];
+                            }
+                        }
+                        
+                        // Parse MESSAGE instructions from modelfile
+                        if (response.data.modelfile) {
+                            const messages = this.parseMessagesFromModelfile(response.data.modelfile);
+                            if (messages.length > 0) {
+                                this.sourceModelParams.messages = messages;
+                            }
+                        }
+                        
+                        // Parse system prompt from modelfile
+                        if (response.data.modelfile && !this.sourceModelParams.system) {
+                            const systemMatch = response.data.modelfile.match(/SYSTEM\s+"""([\s\S]*?)"""/);
+                            if (systemMatch) {
+                                this.sourceModelParams.system = systemMatch[1];
+                            }
+                        }
+                        
+                        this.renderSourceParams(response.data);
+                        $('#creator-source-name').text(modelName);
+                        
+                        // Auto-fill new model name if empty
+                        if (!$('#creator-new-name').val()) {
+                            $('#creator-new-name').val(modelName.split(':')[0] + '-custom');
+                        }
+                        
+                        this.showNotification('success', 'Model Loaded', `Loaded parameters from ${modelName}`);
+                    } else {
+                        $sourceParams.html(`<div class="empty-state"><div style="color: #DC2626;">Error: ${this.escapeHtml(response.error)}</div></div>`);
+                    }
+                })
+                .fail(() => {
+                    $sourceParams.html('<div class="empty-state"><div style="color: #DC2626;">Failed to load model info</div></div>');
+                });
+        },
+        
+        // Parse stop sequences from modelfile content
+        parseStopSequencesFromModelfile: function(modelfile) {
+            const stopSequences = [];
+            
+            // Match PARAMETER stop "value" or just stop "value"
+            const patterns = [
+                /PARAMETER\s+stop\s+"([^"]*)"/g,
+                /PARAMETER\s+stop\s+'([^']*)'/g,
+                /PARAMETER\s+stop\s+([^\s\n]+)/g,
+                /^stop\s+"([^"]*)"/gm,
+                /^stop\s+'([^']*)'/gm,
+                /^stop\s+([^\s\n]+)/gm
+            ];
+            
+            patterns.forEach(pattern => {
+                let match;
+                while ((match = pattern.exec(modelfile)) !== null) {
+                    let stopValue = match[1].trim();
+                    // Handle escaped sequences
+                    stopValue = stopValue.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+                    // Handle Unicode escapes like \u003c
+                    stopValue = stopValue.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => 
+                        String.fromCharCode(parseInt(hex, 16))
+                    );
+                    if (stopValue && !stopSequences.includes(stopValue)) {
+                        stopSequences.push(stopValue);
+                    }
+                }
+            });
+            
+            return stopSequences;
+        },
+        
+        // Parse MESSAGE instructions from modelfile content
+        parseMessagesFromModelfile: function(modelfile) {
+            const messages = [];
+            
+            // Match MESSAGE role content
+            const messagePattern = /MESSAGE\s+(user|assistant|system)\s+(.+?)(?=\nMESSAGE|\n[A-Z]+|$)/gs;
+            let match;
+            
+            while ((match = messagePattern.exec(modelfile)) !== null) {
+                const role = match[1].trim();
+                let content = match[2].trim();
+                // Remove surrounding quotes if present
+                content = content.replace(/^["']|["']$/g, '');
+                if (role && content) {
+                    messages.push({ role, content });
+                }
+            }
+            
+            return messages;
+        },
+        
+        renderSourceParams: function(data) {
+            const $container = $('#creator-source-params');
+            let html = '';
+            
+            // Model details section
+            const details = data.details || {};
+            html += `
+                <div class="source-section" style="margin-bottom: 16px;">
+                    <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">Model Details</div>
+                    <div class="source-param-item">
+                        <span class="source-param-key">Family</span>
+                        <span class="source-param-value">${this.escapeHtml(details.family || 'Unknown')}</span>
+                    </div>
+                    <div class="source-param-item">
+                        <span class="source-param-key">Parameters</span>
+                        <span class="source-param-value">${this.escapeHtml(details.parameter_size || 'Unknown')}</span>
+                    </div>
+                    <div class="source-param-item">
+                        <span class="source-param-key">Quantization</span>
+                        <span class="source-param-value">${this.escapeHtml(details.quantization_level || 'N/A')}</span>
+                    </div>
+                </div>
+            `;
+            
+            // Parameters section
+            const params = { ...data.parameters };
+            
+            // Add any additional parameters parsed from modelfile
+            if (this.sourceModelParams) {
+                Object.keys(this.sourceModelParams).forEach(key => {
+                    if (!(key in params) && key !== 'messages' && key !== 'system' && key !== 'template') {
+                        params[key] = this.sourceModelParams[key];
+                    }
+                });
+            }
+            
+            // Filter out non-parameter keys for display
+            const displayParams = Object.fromEntries(
+                Object.entries(params).filter(([key]) => 
+                    !['messages', 'system', 'template'].includes(key)
+                )
+            );
+            
+            if (Object.keys(displayParams).length > 0) {
+                html += `<div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">Current Parameters</div>`;
+                for (const [key, value] of Object.entries(displayParams)) {
+                    if (key === 'stop') {
+                        // Handle stop sequences specially
+                        const stopSequences = Array.isArray(value) ? value : [value];
+                        html += `
+                            <div class="source-param-item source-param-clickable" data-param="${this.escapeHtml(key)}" onclick="App.copyParamToNew('stop')" title="Click to copy to New Model">
+                                <span class="source-param-key">${this.escapeHtml(key)}</span>
+                                <span class="source-param-value">${this.escapeHtml(stopSequences.map(s => '"' + s + '"').join(', '))}</span>
+                            </div>
+                        `;
+                    } else {
+                        html += `
+                            <div class="source-param-item source-param-clickable" data-param="${this.escapeHtml(key)}" onclick="App.copyParamToNew('${this.escapeHtml(key)}')" title="Click to copy to New Model">
+                                <span class="source-param-key">${this.escapeHtml(key)}</span>
+                                <span class="source-param-value">${this.escapeHtml(String(value))}</span>
+                            </div>
+                        `;
+                    }
+                }
+            } else {
+                html += `<div style="font-size: 12px; color: var(--text-muted); padding: 12px; background: var(--bg-secondary); border-radius: 6px;">No custom parameters set. Using model defaults.</div>`;
+            }
+            
+            // System prompt if exists
+            const systemPrompt = this.sourceModelParams?.system || (data.modelfile?.match(/SYSTEM\s+"""([\s\S]*?)"""/)?.[1]);
+            if (systemPrompt) {
+                html += `
+                    <div style="font-size: 11px; color: var(--text-muted); margin: 16px 0 8px;">System Prompt</div>
+                    <div class="source-param-clickable" onclick="App.copySystemToNew()" title="Click to copy to New Model" style="font-size: 12px; background: var(--bg-secondary); padding: 10px; border-radius: 6px; font-family: var(--font-mono); white-space: pre-wrap; max-height: 100px; overflow-y: auto; cursor: pointer;">${this.escapeHtml(systemPrompt)}</div>
+                `;
+            }
+            
+            // Template if exists
+            const templateText = this.sourceModelParams?.template || (data.modelfile?.match(/TEMPLATE\s+"""([\s\S]*?)"""/)?.[1]);
+            if (templateText) {
+                html += `
+                    <div style="font-size: 11px; color: var(--text-muted); margin: 16px 0 8px;">Prompt Template</div>
+                    <div class="source-param-clickable" onclick="App.copyTemplateToNew()" title="Click to copy to New Model" style="font-size: 12px; background: var(--bg-secondary); padding: 10px; border-radius: 6px; font-family: var(--font-mono); white-space: pre-wrap; max-height: 100px; overflow-y: auto; cursor: pointer;">${this.escapeHtml(templateText)}</div>
+                `;
+            }
+            
+            // Messages if exist
+            const messages = this.sourceModelParams?.messages || [];
+            if (messages.length > 0) {
+                html += `
+                    <div style="font-size: 11px; color: var(--text-muted); margin: 16px 0 8px;">Message Examples (${messages.length})</div>
+                    <div class="source-param-clickable" onclick="App.copyMessagesToNew()" title="Click to copy to New Model" style="background: var(--bg-secondary); padding: 10px; border-radius: 6px; max-height: 150px; overflow-y: auto; cursor: pointer;">
+                `;
+                messages.forEach((msg, idx) => {
+                    const roleColor = msg.role === 'user' ? '#3B82F6' : (msg.role === 'assistant' ? '#10B981' : '#8B5CF6');
+                    html += `
+                        <div style="margin-bottom: 8px; ${idx === messages.length - 1 ? '' : 'border-bottom: 1px solid var(--border-color); padding-bottom: 8px;'}">
+                            <div style="font-size: 10px; color: ${roleColor}; font-weight: 600; text-transform: uppercase;">${this.escapeHtml(msg.role)}</div>
+                            <div style="font-size: 12px; font-family: var(--font-mono); white-space: pre-wrap;">${this.escapeHtml(msg.content.substring(0, 100))}${msg.content.length > 100 ? '...' : ''}</div>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+            }
+            
+            $container.html(html);
+        },
+        
+        // Copy individual parameter to new model
+        copyParamToNew: function(paramName) {
+            if (!this.sourceModelParams || !this.sourceModelParams[paramName]) {
+                this.showNotification('warning', 'No Value', 'No value to copy');
+                return;
+            }
+            
+            const value = this.sourceModelParams[paramName];
+            
+            if (paramName === 'stop') {
+                this.setStopSequences(Array.isArray(value) ? value : [value]);
+                this.showNotification('success', 'Copied', 'Stop sequences copied to New Model');
+            } else {
+                const $input = $(`#creator-${paramName}`);
+                if ($input.length) {
+                    $input.val(value);
+                    this.updateParamDiff(paramName, value);
+                    this.showNotification('success', 'Copied', `${paramName} copied to New Model`);
+                }
+            }
+        },
+        
+        // Copy system prompt to new model
+        copySystemToNew: function() {
+            const systemPrompt = this.sourceModelParams?.system;
+            if (systemPrompt) {
+                $('#creator-system-prompt').val(systemPrompt);
+                this.showNotification('success', 'Copied', 'System prompt copied to New Model');
+            }
+        },
+        
+        // Copy template to new model
+        copyTemplateToNew: function() {
+            const template = this.sourceModelParams?.template;
+            if (template) {
+                $('#creator-template').val(template);
+                this.showNotification('success', 'Copied', 'Template copied to New Model');
+            }
+        },
+        
+        // Copy messages to new model
+        copyMessagesToNew: function() {
+            const messages = this.sourceModelParams?.messages;
+            if (messages && messages.length > 0) {
+                // Convert to user:/assistant: format
+                const formatted = messages.map(m => `${m.role}: ${m.content}`).join('\n\n');
+                $('#creator-message').val(formatted);
+                this.showNotification('success', 'Copied', 'Message examples copied to New Model');
+            }
+        },
+        
+        applyParameterTemplate: function(templateName) {
+            const template = this.parameterTemplates[templateName];
+            if (!template) return;
+            
+            // Apply template values
+            for (const [key, value] of Object.entries(template.params)) {
+                const $input = $(`#creator-${key}`);
+                if ($input.length) {
+                    $input.val(value);
+                    this.updateParamDiff(key, value);
+                }
+            }
+            
+            this.showNotification('success', 'Template Applied', `Applied "${template.name}" settings`);
+        },
+        
+        copyAllSourceParams: function() {
+            if (Object.keys(this.sourceModelParams).length === 0) {
+                this.showNotification('warning', 'No Source', 'Load a source model first');
+                return;
+            }
+            
+            let copiedCount = 0;
+            
+            for (const [key, value] of Object.entries(this.sourceModelParams)) {
+                // Skip non-parameter keys that have special handling
+                if (['messages', 'system', 'template'].includes(key)) {
+                    continue;
+                }
+                
+                if (key === 'stop') {
+                    // Handle stop sequences specially
+                    this.setStopSequences(Array.isArray(value) ? value : [value]);
+                    copiedCount++;
+                } else {
+                    const $input = $(`#creator-${key}`);
+                    if ($input.length) {
+                        $input.val(value);
+                        this.updateParamDiff(key, value);
+                        copiedCount++;
+                    }
+                }
+            }
+            
+            // Copy system prompt if it exists
+            if (this.sourceModelParams.system) {
+                $('#creator-system-prompt').val(this.sourceModelParams.system);
+                copiedCount++;
+            }
+            
+            // Copy template if it exists
+            if (this.sourceModelParams.template) {
+                $('#creator-template').val(this.sourceModelParams.template);
+                copiedCount++;
+            }
+            
+            // Copy messages if they exist
+            if (this.sourceModelParams.messages && this.sourceModelParams.messages.length > 0) {
+                const formatted = this.sourceModelParams.messages.map(m => `${m.role}: ${m.content}`).join('\n\n');
+                $('#creator-message').val(formatted);
+                copiedCount++;
+            }
+            
+            this.showNotification('success', 'Parameters Copied', `Copied ${copiedCount} settings from source model`);
+        },
+        
+        resetCreatorToDefaults: function() {
+            // Clear all input fields
+            $('.creator-param input').val('').removeClass('changed new-value');
+            $('.param-diff').removeClass('changed new').hide();
+            $('#creator-system-prompt').val('');
+            $('#creator-template').val('');
+            $('#creator-message').val('');
+            
+            // Reset stop sequences to single empty input
+            $('#creator-stop-sequences').html(`
+                <div class="creator-stop-item">
+                    <input type="text" class="aqua-input stop-input" placeholder="Enter stop sequence...">
+                    <button class="aqua-btn tiny danger" onclick="App.removeStopSequence(this)">✕</button>
+                </div>
+            `);
+            
+            this.showNotification('info', 'Reset', 'Parameters reset to defaults');
+        },
+        
+        updateParamDiff: function(paramName, value) {
+            const $input = $(`#creator-${paramName}`);
+            const $diff = $(`#diff-${paramName}`);
+            const sourceValue = this.sourceModelParams[paramName];
+            const defaultValue = this.defaultParams[paramName];
+            
+            // Remove existing classes
+            $input.removeClass('changed new-value');
+            $diff.removeClass('changed new').hide();
+            
+            if (value === '' || value === null || value === undefined) {
+                return;
+            }
+            
+            // Check if different from source
+            if (sourceValue !== undefined && String(sourceValue) !== String(value)) {
+                $input.addClass('changed');
+                $diff.addClass('changed').text('Modified').show();
+            } else if (sourceValue === undefined && String(value) !== String(defaultValue)) {
+                $input.addClass('new-value');
+                $diff.addClass('new').text('New').show();
+            }
+        },
+        
+        addStopSequence: function() {
+            $('#creator-stop-sequences').append(`
+                <div class="creator-stop-item">
+                    <input type="text" class="aqua-input stop-input" placeholder="Enter stop sequence...">
+                    <button class="aqua-btn tiny danger" onclick="App.removeStopSequence(this)">✕</button>
+                </div>
+            `);
+        },
+        
+        removeStopSequence: function(btn) {
+            const $items = $('#creator-stop-sequences .creator-stop-item');
+            if ($items.length > 1) {
+                $(btn).closest('.creator-stop-item').remove();
+            } else {
+                // Keep at least one, just clear it
+                $(btn).siblings('.stop-input').val('');
+            }
+        },
+        
+        setStopSequences: function(sequences) {
+            const $container = $('#creator-stop-sequences');
+            $container.empty();
+            
+            if (!sequences || sequences.length === 0) {
+                sequences = [''];
+            }
+            
+            sequences.forEach(seq => {
+                $container.append(`
+                    <div class="creator-stop-item">
+                        <input type="text" class="aqua-input stop-input" value="${this.escapeHtml(seq)}" placeholder="Enter stop sequence...">
+                        <button class="aqua-btn tiny danger" onclick="App.removeStopSequence(this)">✕</button>
+                    </div>
+                `);
+            });
+        },
+        
+        toggleCreatorAdvanced: function() {
+            const $content = $('#creator-advanced-content');
+            const $toggle = $('#creator-advanced-toggle');
+            
+            if ($content.is(':visible')) {
+                $content.slideUp(200);
+                $toggle.text('▶');
+            } else {
+                $content.slideDown(200);
+                $toggle.text('▼');
+            }
+        },
+        
+        getCreatorParams: function() {
+            const params = {};
+            
+            // Core params
+            const paramFields = [
+                'temperature', 'num_ctx', 'num_predict', 'seed',
+                'top_k', 'top_p', 'min_p', 'typical_p',
+                'repeat_penalty', 'repeat_last_n', 'presence_penalty', 'frequency_penalty'
+            ];
+            
+            paramFields.forEach(field => {
+                const val = $(`#creator-${field}`).val();
+                if (val !== '' && val !== null) {
+                    params[field] = val;
+                }
+            });
+            
+            // Stop sequences
+            const stopSequences = [];
+            $('.stop-input').each(function() {
+                const val = $(this).val().trim();
+                if (val) {
+                    stopSequences.push(val);
+                }
+            });
+            if (stopSequences.length > 0) {
+                params.stop = stopSequences;
+            }
+            
+            return params;
+        },
+        
+        // Parse message textarea content into message objects
+        parseMessageExamples: function() {
+            const messageText = $('#creator-message').val().trim();
+            if (!messageText) return [];
+            
+            const messages = [];
+            const lines = messageText.split('\n');
+            let currentRole = null;
+            let currentContent = [];
+            
+            for (const line of lines) {
+                // Check for role prefixes: user:, assistant:, system:
+                const roleMatch = line.match(/^(user|assistant|system):\s*/i);
+                if (roleMatch) {
+                    // Save previous message if exists
+                    if (currentRole && currentContent.length > 0) {
+                        messages.push({
+                            role: currentRole,
+                            content: currentContent.join('\n').trim()
+                        });
+                    }
+                    // Start new message
+                    currentRole = roleMatch[1].toLowerCase();
+                    const remainder = line.substring(roleMatch[0].length);
+                    currentContent = remainder ? [remainder] : [];
+                } else if (currentRole) {
+                    // Continue current message
+                    currentContent.push(line);
+                }
+            }
+            
+            // Don't forget the last message
+            if (currentRole && currentContent.length > 0) {
+                messages.push({
+                    role: currentRole,
+                    content: currentContent.join('\n').trim()
+                });
+            }
+            
+            return messages;
+        },
+        
+        // Generate Modelfile-style preview
+        generateModelfilePreview: function(payload) {
+            let modelfile = `# Modelfile for ${payload.name}\n`;
+            modelfile += `# Generated by Ollama Manager\n\n`;
+            modelfile += `FROM ${payload.from}\n\n`;
+            
+            if (payload.system) {
+                modelfile += `SYSTEM """${payload.system}"""\n\n`;
+            }
+            
+            if (payload.template) {
+                modelfile += `TEMPLATE """${payload.template}"""\n\n`;
+            }
+            
+            if (payload.parameters) {
+                for (const [key, value] of Object.entries(payload.parameters)) {
+                    if (key === 'stop' && Array.isArray(value)) {
+                        value.forEach(stopVal => {
+                            modelfile += `PARAMETER stop "${stopVal}"\n`;
+                        });
+                    } else {
+                        modelfile += `PARAMETER ${key} ${value}\n`;
+                    }
+                }
+                modelfile += '\n';
+            }
+            
+            if (payload.messages && payload.messages.length > 0) {
+                payload.messages.forEach(msg => {
+                    // Escape content if needed
+                    const content = msg.content.replace(/"/g, '\\"');
+                    modelfile += `MESSAGE ${msg.role} "${content}"\n`;
+                });
+            }
+            
+            return modelfile;
+        },
+        
+        validateCreatorForm: function() {
+            const errors = [];
+            const newName = $('#creator-new-name').val().trim();
+            const sourceModel = $('#creator-source-model').val();
+            
+            if (!newName) {
+                errors.push('New model name is required');
+            } else if (!/^[a-zA-Z0-9][a-zA-Z0-9_\-.:\/]*$/.test(newName)) {
+                errors.push('Model name can only contain letters, numbers, hyphens, underscores, and colons');
+            }
+            
+            if (!sourceModel) {
+                errors.push('Source model is required');
+            }
+            
+            // Validate parameter ranges
+            const temp = parseFloat($('#creator-temperature').val());
+            if (!isNaN(temp) && (temp < 0 || temp > 2)) {
+                errors.push('Temperature must be between 0 and 2');
+            }
+            
+            const topP = parseFloat($('#creator-top_p').val());
+            if (!isNaN(topP) && (topP < 0 || topP > 1)) {
+                errors.push('top_p must be between 0 and 1');
+            }
+            
+            const minP = parseFloat($('#creator-min_p').val());
+            if (!isNaN(minP) && (minP < 0 || minP > 1)) {
+                errors.push('min_p must be between 0 and 1');
+            }
+            
+            return errors;
+        },
+        
+        showValidationErrors: function(errors) {
+            const $validation = $('#creator-validation');
+            
+            if (errors.length === 0) {
+                $validation.hide();
+                return;
+            }
+            
+            const html = errors.map(e => `
+                <div class="creator-validation-item">
+                    <span>⚠️</span>
+                    <span>${this.escapeHtml(e)}</span>
+                </div>
+            `).join('');
+            
+            $validation.removeClass('success').html(html).show();
+        },
+        
+        previewModelCreation: function() {
+            const errors = this.validateCreatorForm();
+            if (errors.length > 0) {
+                this.showValidationErrors(errors);
+                return;
+            }
+            
+            const newName = $('#creator-new-name').val().trim();
+            const sourceModel = $('#creator-source-model').val();
+            const params = this.getCreatorParams();
+            const systemPrompt = $('#creator-system-prompt').val().trim();
+            const template = $('#creator-template').val().trim();
+            const messages = this.parseMessageExamples();
+            
+            const payload = {
+                name: newName,
+                from: sourceModel,
+                parameters: params
+            };
+            if (systemPrompt) payload.system = systemPrompt;
+            if (template) payload.template = template;
+            if (messages.length > 0) payload.messages = messages;
+            
+            // Generate Modelfile preview
+            const modelfilePreview = this.generateModelfilePreview(payload);
+            
+            // Show preview modal (styled like a window)
+            const $overlay = $(`
+                <div class="creator-preview-overlay" onclick="if(event.target===this) $(this).remove();" style="z-index: 100000;">
+                    <div class="window creator-preview-modal visible" id="window-preview-modal" style="position: relative; width: 700px; height: 600px; z-index: 100001;">
+                        <div class="window-titlebar" style="cursor: move;">
+                            <div class="traffic-lights">
+                                <div class="traffic-light close" onclick="$(this).closest('.creator-preview-overlay').remove()"></div>
+                                <div class="traffic-light minimize" onclick="$(this).closest('.window').toggleClass('minimized')"></div>
+                                <div class="traffic-light maximize" onclick="App.maximizePreviewWindow()"></div>
+                            </div>
+                            <div class="window-title">📋 Model Creation Preview</div>
+                        </div>
+                        <div class="window-toolbar" style="padding: 8px 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);">
+                            <button class="aqua-btn small" id="preview-tab-json" onclick="App.switchPreviewTab('json')" style="margin-right: 8px;">📊 API Payload</button>
+                            <button class="aqua-btn small" id="preview-tab-modelfile" onclick="App.switchPreviewTab('modelfile')">📄 Modelfile Format</button>
+                        </div>
+                        <div class="window-content" style="padding: 16px; height: calc(100% - 110px); overflow-y: auto;">
+                            <div id="preview-content-json">
+                                <p style="margin-bottom: 12px; font-size: 13px; color: var(--text-muted);">The following JSON payload will be sent to the Ollama API:</p>
+                                <pre style="background: var(--bg-secondary); padding: 12px; border-radius: 6px; font-size: 12px; overflow-x: auto; max-height: 400px; white-space: pre-wrap; word-wrap: break-word;">${this.escapeHtml(JSON.stringify(payload, null, 2) || 'No data to preview')}</pre>
+                            </div>
+                            <div id="preview-content-modelfile" style="display: none;">
+                                <p style="margin-bottom: 12px; font-size: 13px; color: var(--text-muted);">Equivalent Modelfile format that will be generated:</p>
+                                <pre style="background: var(--bg-secondary); padding: 12px; border-radius: 6px; font-size: 12px; overflow-x: auto; max-height: 400px; white-space: pre-wrap; word-wrap: break-word;">${this.escapeHtml(modelfilePreview)}</pre>
+                            </div>
+                        </div>
+                        <div class="window-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px;">
+                            <button class="aqua-btn" onclick="$(this).closest('.creator-preview-overlay').remove()">Cancel</button>
+                            <button class="aqua-btn primary" onclick="$(this).closest('.creator-preview-overlay').remove(); App.createNewModel();">🚀 Create Model</button>
+                        </div>
+                        
+                        <!-- Resize handles -->
+                        <div class="window-resize-handle window-resize-n"></div>
+                        <div class="window-resize-handle window-resize-s"></div>
+                        <div class="window-resize-handle window-resize-e"></div>
+                        <div class="window-resize-handle window-resize-w"></div>
+                        <div class="window-resize-handle window-resize-nw"></div>
+                        <div class="window-resize-handle window-resize-ne"></div>
+                        <div class="window-resize-handle window-resize-sw"></div>
+                        <div class="window-resize-handle window-resize-se"></div>
+                    </div>
+                </div>
+            `);
+            
+            $('body').append($overlay);
+            
+            // Make the preview modal resizable (but not draggable since it's a lightbox)
+            this.makeWindowResizable($overlay.find('.window'));
+            this.focusWindow('window-preview-modal');
+            
+            // Set initial tab state
+            $('#preview-tab-json').addClass('primary');
+        },
+        
+        // Switch between preview tabs
+        switchPreviewTab: function(tab) {
+            if (tab === 'json') {
+                $('#preview-content-json').show();
+                $('#preview-content-modelfile').hide();
+                $('#preview-tab-json').addClass('primary');
+                $('#preview-tab-modelfile').removeClass('primary');
+            } else {
+                $('#preview-content-json').hide();
+                $('#preview-content-modelfile').show();
+                $('#preview-tab-json').removeClass('primary');
+                $('#preview-tab-modelfile').addClass('primary');
+            }
+        },
+        
+        // Maximize preview window
+        maximizePreviewWindow: function() {
+            const $modal = $('.creator-preview-modal');
+            const $overlay = $('.creator-preview-overlay');
+            
+            if ($modal.hasClass('maximized')) {
+                $modal.removeClass('maximized').css({
+                    width: $modal.data('original-width'),
+                    height: $modal.data('original-height')
+                });
+            } else {
+                $modal.data('original-width', $modal.css('width'));
+                $modal.data('original-height', $modal.css('height'));
+                $modal.addClass('maximized').css({
+                    width: '90vw',
+                    height: '90vh'
+                });
+            }
+        },
+        
+        createNewModel: function() {
+            const errors = this.validateCreatorForm();
+            if (errors.length > 0) {
+                this.showValidationErrors(errors);
+                return;
+            }
+            
+            const newName = $('#creator-new-name').val().trim();
+            const sourceModel = $('#creator-source-model').val();
+            const params = this.getCreatorParams();
+            const systemPrompt = $('#creator-system-prompt').val().trim();
+            const template = $('#creator-template').val().trim();
+            const messages = this.parseMessageExamples();
+            
+            const $btn = $('#creator-create-btn');
+            const $status = $('#creator-status');
+            
+            $btn.addClass('loading').prop('disabled', true).text('🔄 Creating');
+            $status.text(`Creating ${newName} from ${sourceModel}...`);
+            $('#creator-validation').hide();
+            
+            const payload = {
+                name: newName,
+                from: sourceModel,
+                parameters: params
+            };
+            if (systemPrompt) payload.system = systemPrompt;
+            if (template) payload.template = template;
+            if (messages.length > 0) payload.messages = messages;
             
             $.ajax({
-                url: this.api.models + '?action=copy',
+                url: this.api.models + '?action=create_advanced',
                 method: 'POST',
                 contentType: 'application/json',
-                data: JSON.stringify({ source: sourceName, destination: destName })
+                data: JSON.stringify(payload),
+                timeout: 300000 // 5 minute timeout
             })
             .done((response) => {
                 if (response.success) {
-                    this.showNotification('success', 'Model Copied', `Copied to ${destName}`);
-                    this.loadModels();
+                    this.showModelCreationSuccess(newName);
+                    this.loadModels(); // Refresh model list
+                    $status.text(`Successfully created ${newName}`);
                 } else {
-                    this.showNotification('error', 'Copy Failed', response.error);
+                    $status.text(`Error: ${response.error}`);
+                    this.showNotification('error', 'Creation Failed', response.error);
+                    $('#creator-validation')
+                        .removeClass('success')
+                        .html(`<div class="creator-validation-item"><span>❌</span><span>${this.escapeHtml(response.error)}</span></div>`)
+                        .show();
                 }
             })
-            .fail(() => {
-                this.showNotification('error', 'Copy Failed', 'Failed to copy model');
+            .fail((xhr) => {
+                const errorMsg = xhr.responseJSON?.error || 'Request failed';
+                $status.text(`Error: ${errorMsg}`);
+                this.showNotification('error', 'Creation Failed', errorMsg);
+            })
+            .always(() => {
+                $btn.removeClass('loading').prop('disabled', false).text('🚀 Create Model');
             });
+        },
+        
+        showModelCreationSuccess: function(modelName) {
+            const $window = $('#window-modelcreator');
+            const $overlay = $(`
+                <div class="creator-success-overlay">
+                    <div class="creator-success-icon">✅</div>
+                    <div class="creator-success-text">Model Created!</div>
+                    <div class="creator-success-subtext">${this.escapeHtml(modelName)} is ready to use</div>
+                    <div style="margin-top: 24px; display: flex; gap: 12px;">
+                        <button class="aqua-btn" onclick="$(this).closest('.creator-success-overlay').fadeOut(300, function(){ $(this).remove(); })">Close</button>
+                        <button class="aqua-btn primary" onclick="App.openChatWithModel('${this.escapeHtml(modelName)}'); $(this).closest('.creator-success-overlay').remove();">💬 Chat with Model</button>
+                    </div>
+                </div>
+            `);
+            
+            $window.find('.window-content').css('position', 'relative').append($overlay);
+            
+            // Auto-close after 5 seconds
+            setTimeout(() => {
+                $overlay.fadeOut(300, function() { $(this).remove(); });
+            }, 5000);
+            
+            this.showNotification('success', 'Model Created', `${modelName} created successfully!`);
+        },
+        
+        exportCreatorParams: function() {
+            const params = this.getCreatorParams();
+            const systemPrompt = $('#creator-system-prompt').val().trim();
+            const template = $('#creator-template').val().trim();
+            const messageText = $('#creator-message').val().trim();
+            const messages = this.parseMessageExamples();
+            
+            const config = {
+                parameters: params,
+                system: systemPrompt || undefined,
+                template: template || undefined,
+                messages: messages.length > 0 ? messages : undefined,
+                messageText: messageText || undefined, // Raw text for re-import
+                exportedAt: new Date().toISOString()
+            };
+            
+            const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'model-config.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            this.showNotification('success', 'Exported', 'Configuration exported successfully');
+        },
+        
+        importCreatorParams: function() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const config = JSON.parse(e.target.result);
+                        
+                        // Apply parameters
+                        if (config.parameters) {
+                            for (const [key, value] of Object.entries(config.parameters)) {
+                                if (key === 'stop') {
+                                    this.setStopSequences(Array.isArray(value) ? value : [value]);
+                                } else {
+                                    const $input = $(`#creator-${key}`);
+                                    if ($input.length) {
+                                        $input.val(value);
+                                        this.updateParamDiff(key, value);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Apply system prompt
+                        if (config.system) {
+                            $('#creator-system-prompt').val(config.system);
+                        }
+                        
+                        // Apply template
+                        if (config.template) {
+                            $('#creator-template').val(config.template);
+                        }
+                        
+                        // Apply message examples - prefer raw text if available, otherwise format from messages array
+                        if (config.messageText) {
+                            $('#creator-message').val(config.messageText);
+                        } else if (config.messages && Array.isArray(config.messages)) {
+                            const formatted = config.messages.map(m => `${m.role}: ${m.content}`).join('\n\n');
+                            $('#creator-message').val(formatted);
+                        } else if (config.message) {
+                            // Backwards compatibility
+                            $('#creator-message').val(config.message);
+                        }
+                        
+                        this.showNotification('success', 'Imported', 'Configuration imported successfully');
+                    } catch (err) {
+                        this.showNotification('error', 'Import Failed', 'Invalid JSON file');
+                    }
+                };
+                reader.readAsText(file);
+            };
+            
+            input.click();
         },
 
         // ============================================
@@ -1857,6 +2804,52 @@
                     zIndex: 10
                 };
             });
+            
+            // Initialize resizable panel divider for Model Creator
+            this.initCreatorPanelResizer();
+        },
+        
+        // Initialize resizable divider for creator panels
+        initCreatorPanelResizer: function() {
+            const $divider = $('#creator-panel-divider');
+            const $sourcePanel = $('.source-panel');
+            const $container = $('.creator-content');
+            let isResizing = false;
+            let startX = 0;
+            let startWidth = 0;
+            
+            $divider.on('mousedown', function(e) {
+                e.preventDefault();
+                isResizing = true;
+                startX = e.clientX;
+                startWidth = $sourcePanel.width();
+                $('body').addClass('resizing');
+                $divider.addClass('active');
+            });
+            
+            $(document).on('mousemove', function(e) {
+                if (!isResizing) return;
+                
+                const containerWidth = $container.width();
+                const deltaX = e.clientX - startX;
+                let newWidth = startWidth + deltaX;
+                
+                // Constrain width between 20% and 60% of container
+                const minWidth = containerWidth * 0.2;
+                const maxWidth = containerWidth * 0.6;
+                newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+                
+                const percentage = (newWidth / containerWidth) * 100;
+                $sourcePanel.css('width', percentage + '%');
+            });
+            
+            $(document).on('mouseup', function() {
+                if (isResizing) {
+                    isResizing = false;
+                    $('body').removeClass('resizing');
+                    $divider.removeClass('active');
+                }
+            });
         },
 
         initWindowZIndex: function() {
@@ -2032,6 +3025,10 @@
                 case 'settings':
                     // Model selector in settings should already be populated from init
                     break;
+                case 'modelcreator':
+                    // Ensure model list is updated in creator dropdown
+                    this.loadModels();
+                    break;
             }
         },
 
@@ -2136,7 +3133,8 @@
             const items = [
                 { type: 'window', icon: '📊', title: 'Dashboard', subtitle: 'View server status', action: () => this.showWindow('dashboard') },
                 { type: 'window', icon: '📦', title: 'Model Manager', subtitle: 'Manage your models', action: () => this.showWindow('models') },
-                { type: 'window', icon: '💬', title: 'Chat', subtitle: 'Chat with models', action: () => this.showWindow('chat') },
+                { type: 'window', icon: '�️', title: 'Model Creator', subtitle: 'Create custom models with parameters', action: () => this.showWindow('modelcreator') },
+                { type: 'window', icon: '�💬', title: 'Chat', subtitle: 'Chat with models', action: () => this.showWindow('chat') },
                 { type: 'window', icon: '✨', title: 'Generate', subtitle: 'Generate completions', action: () => this.showWindow('generate') },
                 { type: 'window', icon: '🎯', title: 'Embeddings', subtitle: 'Vector embeddings playground', action: () => this.showWindow('embeddings') },
                 { type: 'window', icon: '📋', title: 'API Logs', subtitle: 'View API request logs', action: () => this.showWindow('logs') },
@@ -2280,14 +3278,20 @@
                     }
                 }
                 
-                // Cmd/Ctrl + 1-7 for windows
-                if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '7') {
+                // Cmd/Ctrl + 1-9 for windows
+                if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '9') {
                     e.preventDefault();
-                    const windows = ['dashboard', 'models', 'chat', 'generate', 'embeddings', 'logs', 'settings'];
+                    const windows = ['dashboard', 'models', 'modelcreator', 'chat', 'generate', 'embeddings', 'logs', 'compare', 'settings'];
                     const index = parseInt(e.key) - 1;
                     if (windows[index]) {
                         this.showWindow(windows[index]);
                     }
+                }
+                
+                // Cmd/Ctrl + Shift + N for new model creator
+                if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'N') {
+                    e.preventDefault();
+                    this.showWindow('modelcreator');
                 }
             });
         },
@@ -2420,6 +3424,26 @@
             // Compare model selectors
             $(document).on('change', '#compare-model-1, #compare-model-2', function() {
                 self.updateCompareButton();
+            });
+            
+            // Model Creator - Parameter inputs change tracking
+            $(document).on('input', '.creator-param input', function() {
+                const paramName = $(this).attr('id').replace('creator-', '');
+                const value = $(this).val();
+                self.updateParamDiff(paramName, value);
+            });
+            
+            // Model Creator - Source model selection change
+            $(document).on('change', '#creator-source-model', function() {
+                // Clear source params when model changes
+                self.sourceModelParams = {};
+                $('#creator-source-params').html(`
+                    <div class="empty-state" style="padding: 40px 20px; text-align: center;">
+                        <div style="font-size: 40px; margin-bottom: 12px;">📦</div>
+                        <div style="font-size: 13px; color: var(--text-muted);">Click Load to view parameters</div>
+                    </div>
+                `);
+                $('#creator-source-name').text('No model loaded');
             });
         },
 

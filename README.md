@@ -15,11 +15,12 @@ g023's OllamaMan - Ollama Manager is designed to simplify the management and uti
 
 Ollama is an open-source platform that enables running large language models locally on your hardware. It supports various model architectures and provides a REST API for programmatic access. Ollama Manager acts as a user-friendly frontend to this API, providing features like:
 
-- **Model Management**: Browse, download, and organize AI models
+- **Model Management**: Browse, download, organize, and create custom AI models
 - **Interactive Chat**: Conversational interface with advanced features
 - **Text Generation**: Single-prompt completion tasks
 - **Embeddings**: Vector representation generation and visualization
 - **Server Monitoring**: Real-time status and performance metrics
+- **Model Customization**: Create personalized models with fine-tuned parameters
 
 ## ✨ Key Features
 
@@ -31,11 +32,34 @@ Ollama is an open-source platform that enables running large language models loc
 - **Storage Information**: Disk usage tracking for model storage
 - **Quick Actions**: One-click access to common operations
 
-#### 📦 Model Manager
+#### 📦 Model Manager & Creator
 - **Model Library**: Browse available models from the connected Ollama server
-- **Download Management**: Pull models
-- **Model Operations**: Delete, and inspect model details
+- **Download Management**: Pull models with progress tracking
+- **Model Operations**: Delete, copy, and inspect model details
 - **Search and Filter**: Find models by name or capabilities
+- **Advanced Model Creation**: Create custom models with modified parameters
+- **Parameter Tuning**: Adjust temperature, context size, sampling settings, and more
+- **System Prompts**: Define AI behavior and personality
+- **Prompt Templates**: Customize prompt formatting
+- **Message Examples**: Add conversation examples for fine-tuning
+- **Stop Sequences**: Define custom stopping conditions
+- **Configuration Import/Export**: Save and load model configurations
+- **Preview Mode**: Review model settings before creation
+
+#### 🛠️ Model Creator
+- **Custom Model Building**: Create personalized AI models from existing base models
+- **Parameter Modification**: Fine-tune model behavior with comprehensive parameter controls:
+  - **Core Parameters**: Temperature, context size, token limits
+  - **Sampling Controls**: Top-k, top-p, min-p, typical-p for generation quality
+  - **Repetition Management**: Penalty settings and sequence controls
+- **System Prompt Integration**: Define AI personality and behavior patterns
+- **Template Customization**: Control prompt formatting and structure
+- **Example Conversations**: Add training examples for specialized behaviors
+- **Stop Sequence Management**: Define custom termination conditions
+- **Parameter Comparison**: Visual diff showing changes from source model
+- **Configuration Management**: Import/export model configurations as JSON
+- **Preview & Validation**: Review complete model setup before creation
+- **Advanced Workflows**: Support for complex model configurations and fine-tuning
 
 #### 💬 Advanced Chat Interface
 - **Conversational AI**: Full-featured chat with context preservation
@@ -198,6 +222,21 @@ Accessible through the Settings window or `api/settings.php`:
 - See size, modification date, and capabilities
 - Copy or delete models as needed
 
+#### Creating Custom Models
+- Open the Model Creator window
+- Select a source model as the base
+- Modify parameters using the intuitive interface:
+  - Adjust core parameters (temperature, context size, etc.)
+  - Configure sampling settings for generation quality
+  - Set repetition controls to avoid loops
+  - Add stop sequences for precise control
+- Define system prompts for AI personality
+- Customize prompt templates
+- Add example conversations for fine-tuning
+- Preview the complete configuration
+- Create the model with one click
+- Import/export configurations for reuse
+
 ### Chat Interface
 
 #### Basic Conversation
@@ -270,6 +309,7 @@ The application provides a REST API for programmatic access. All endpoints retur
 | `/api/models.php?action=pull` | POST | Download a model |
 | `/api/models.php?action=delete` | POST | Remove a model |
 | `/api/models.php?action=copy` | POST | Duplicate a model |
+| `/api/models.php?action=create_advanced` | POST | Create custom model with parameters |
 | `/api/chat.php` | POST | Send chat message |
 | `/api/generate.php` | POST | Generate text completion |
 | `/api/embed.php` | POST | Create embeddings |
@@ -313,13 +353,15 @@ ollama-manager/
 │   ├── config.php         # Configuration constants
 │   ├── ollama.php         # Ollama API wrapper
 │   ├── database.php       # Data persistence layer
+│   ├── models.php         # Model management and creation API
 │   └── *.php              # Individual API handlers
 ├── assets/                # Static resources
-│   ├── css/               # Stylesheets
-│   ├── js/                # JavaScript logic
+│   ├── css/               # Stylesheets (Aqua UI theme)
+│   ├── js/                # JavaScript logic (Model Creator, Chat, etc.)
 │   └── images/            # Interface graphics
 ├── data/                  # Application data storage
-└── KNOWLEDGE_BASE/        # Development documentation
+    └── uploads/           # File upload directory
+
 ```
 
 ### Key Technologies
@@ -348,7 +390,7 @@ ollama-manager/
 
 This project is licensed under the BSD 3-Clause License - see the [LICENSE](LICENSE) file for details.
 
-Copyright (c) 2024, g023
+Copyright (c) 2025, g023
 
 ## 👤 Author
 

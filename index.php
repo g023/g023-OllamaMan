@@ -165,6 +165,10 @@ require_once __DIR__ . '/api/config.php';
                         <div class="quick-action-icon">📥</div>
                         <div class="quick-action-label">Pull Model</div>
                     </div>
+                    <div class="quick-action" onclick="App.showWindow('modelcreator')">
+                        <div class="quick-action-icon">🛠️</div>
+                        <div class="quick-action-label">Create Model</div>
+                    </div>
                     <div class="quick-action" onclick="App.showWindow('embeddings')">
                         <div class="quick-action-icon">🎯</div>
                         <div class="quick-action-label">Embeddings</div>
@@ -237,6 +241,9 @@ require_once __DIR__ . '/api/config.php';
             <div class="window-toolbar">
                 <button class="aqua-btn primary" onclick="App.pullModel()">
                     📥 Pull Model
+                </button>
+                <button class="aqua-btn" onclick="App.showWindow('modelcreator')">
+                    🛠️ Create Custom
                 </button>
                 <button class="aqua-btn" onclick="App.loadModels()">
                     🔄 Refresh
@@ -909,6 +916,293 @@ require_once __DIR__ . '/api/config.php';
             <div class="window-resize-handle window-resize-sw"></div>
             <div class="window-resize-handle window-resize-se"></div>
         </div>
+
+        <!-- ==================== MODEL CREATOR WINDOW ==================== -->
+        <div class="window" id="window-modelcreator" style="width: 1100px; height: 750px; top: 40px; left: 100px;">
+            <div class="window-titlebar">
+                <div class="traffic-lights">
+                    <div class="traffic-light close" title="Close"></div>
+                    <div class="traffic-light minimize" title="Minimize"></div>
+                    <div class="traffic-light maximize" title="Maximize"></div>
+                </div>
+                <div class="window-title">🛠️ Model Creator</div>
+            </div>
+            <div class="window-toolbar">
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 12px; font-weight: 500;">Source Model:</label>
+                        <select id="creator-source-model" class="aqua-select model-selector" style="width: 200px;">
+                            <option value="">Select base model...</option>
+                        </select>
+                        <button class="aqua-btn small" onclick="App.loadSourceModelForCreator()" title="Load parameters from selected model">
+                            📥 Load
+                        </button>
+                    </div>
+                    <div class="toolbar-separator" style="width: 1px; height: 24px; background: var(--border-color);"></div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 12px; font-weight: 500;">New Model Name:</label>
+                        <input type="text" id="creator-new-name" class="aqua-input" style="width: 200px;" placeholder="my-custom-model">
+                    </div>
+                </div>
+            </div>
+            <div class="window-content" style="display: flex; flex-direction: column; overflow: hidden;">
+                <!-- Template Quick Actions -->
+                <div class="creator-templates" style="padding: 12px 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);">
+                    <span style="font-size: 11px; color: var(--text-muted); margin-right: 12px;">⚡ Quick Templates:</span>
+                    <button class="aqua-btn tiny" onclick="App.applyParameterTemplate('creative')" title="High creativity settings">🎨 Creative</button>
+                    <button class="aqua-btn tiny" onclick="App.applyParameterTemplate('code')" title="Precise code generation">💻 Code</button>
+                    <button class="aqua-btn tiny" onclick="App.applyParameterTemplate('precise')" title="Deterministic, precise answers">🎯 Precise</button>
+                    <button class="aqua-btn tiny" onclick="App.applyParameterTemplate('balanced')" title="Default balanced settings">⚖️ Balanced</button>
+                    <span style="margin-left: auto; display: flex; gap: 8px;">
+                        <button class="aqua-btn tiny" onclick="App.copyAllSourceParams()" title="Copy all parameters from source">📋 Copy Source</button>
+                        <button class="aqua-btn tiny" onclick="App.resetCreatorToDefaults()" title="Reset to Ollama defaults">🔄 Reset</button>
+                        <button class="aqua-btn tiny" onclick="App.exportCreatorParams()" title="Export configuration">📤 Export</button>
+                        <button class="aqua-btn tiny" onclick="App.importCreatorParams()" title="Import configuration">📥 Import</button>
+                    </span>
+                </div>
+                
+                <!-- Main Content Area -->
+                <div class="creator-content" style="flex: 1; display: flex; overflow: hidden;">
+                    <!-- Source Parameters (Read-only) -->
+                    <div class="creator-panel source-panel" style="width: 35%; display: flex; flex-direction: column;">
+                        <div class="creator-panel-header" style="padding: 12px 16px; background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color);">
+                            <h3 style="font-size: 13px; font-weight: 600; margin: 0;">📖 Source Model Parameters</h3>
+                            <span id="creator-source-name" style="font-size: 11px; color: var(--text-muted);">No model loaded</span>
+                        </div>
+                        <div class="creator-panel-content" id="creator-source-params" style="flex: 1; overflow-y: auto; padding: 12px;">
+                            <div class="empty-state" style="padding: 40px 20px; text-align: center;">
+                                <div style="font-size: 40px; margin-bottom: 12px;">📦</div>
+                                <div style="font-size: 13px; color: var(--text-muted);">Select a source model and click Load to view its parameters</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Resizable Divider -->
+                    <div id="creator-panel-divider" class="creator-panel-divider" title="Drag to resize panels"></div>
+                    
+                    <!-- New Model Parameters (Editable) -->
+                    <div class="creator-panel edit-panel" style="flex: 1; display: flex; flex-direction: column;">
+                        <div class="creator-panel-header" style="padding: 12px 16px; background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color);">
+                            <h3 style="font-size: 13px; font-weight: 600; margin: 0;">✏️ New Model Configuration</h3>
+                            <span style="font-size: 11px; color: var(--text-muted);">Modify parameters for your new model</span>
+                        </div>
+                        <div class="creator-panel-content" style="flex: 1; overflow-y: auto; padding: 16px;">
+                            <!-- System Prompt Section -->
+                            <div class="creator-section">
+                                <div class="creator-section-header">
+                                    <h4>📝 System Prompt</h4>
+                                    <span class="creator-hint">Define the AI's personality and behavior</span>
+                                </div>
+                                <textarea id="creator-system-prompt" class="aqua-textarea" rows="3" placeholder="You are a helpful AI assistant..."></textarea>
+                            </div>
+                            
+                            <!-- Core Parameters -->
+                            <div class="creator-section">
+                                <div class="creator-section-header">
+                                    <h4>🎛️ Core Parameters</h4>
+                                </div>
+                                <div class="creator-params-grid">
+                                    <div class="creator-param">
+                                        <label>
+                                            <span class="param-name">temperature</span>
+                                            <span class="param-hint" title="Controls randomness. Higher = more creative (0-2)">ℹ️</span>
+                                        </label>
+                                        <input type="number" id="creator-temperature" class="aqua-input" step="0.1" min="0" max="2" placeholder="0.8">
+                                        <span class="param-diff" id="diff-temperature"></span>
+                                    </div>
+                                    <div class="creator-param">
+                                        <label>
+                                            <span class="param-name">num_ctx</span>
+                                            <span class="param-hint" title="Context window size in tokens">ℹ️</span>
+                                        </label>
+                                        <input type="number" id="creator-num_ctx" class="aqua-input" min="512" max="131072" placeholder="2048">
+                                        <span class="param-diff" id="diff-num_ctx"></span>
+                                    </div>
+                                    <div class="creator-param">
+                                        <label>
+                                            <span class="param-name">num_predict</span>
+                                            <span class="param-hint" title="Max tokens to generate. -1 for unlimited">ℹ️</span>
+                                        </label>
+                                        <input type="number" id="creator-num_predict" class="aqua-input" min="-1" max="128000" placeholder="-1">
+                                        <span class="param-diff" id="diff-num_predict"></span>
+                                    </div>
+                                    <div class="creator-param">
+                                        <label>
+                                            <span class="param-name">seed</span>
+                                            <span class="param-hint" title="Random seed for reproducibility. 0 = random">ℹ️</span>
+                                        </label>
+                                        <input type="number" id="creator-seed" class="aqua-input" min="0" placeholder="0">
+                                        <span class="param-diff" id="diff-seed"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Sampling Parameters -->
+                            <div class="creator-section">
+                                <div class="creator-section-header">
+                                    <h4>🎲 Sampling Parameters</h4>
+                                </div>
+                                <div class="creator-params-grid">
+                                    <div class="creator-param">
+                                        <label>
+                                            <span class="param-name">top_k</span>
+                                            <span class="param-hint" title="Limits token selection to top K options">ℹ️</span>
+                                        </label>
+                                        <input type="number" id="creator-top_k" class="aqua-input" min="1" max="100" placeholder="40">
+                                        <span class="param-diff" id="diff-top_k"></span>
+                                    </div>
+                                    <div class="creator-param">
+                                        <label>
+                                            <span class="param-name">top_p</span>
+                                            <span class="param-hint" title="Nucleus sampling probability (0-1)">ℹ️</span>
+                                        </label>
+                                        <input type="number" id="creator-top_p" class="aqua-input" step="0.05" min="0" max="1" placeholder="0.9">
+                                        <span class="param-diff" id="diff-top_p"></span>
+                                    </div>
+                                    <div class="creator-param">
+                                        <label>
+                                            <span class="param-name">min_p</span>
+                                            <span class="param-hint" title="Minimum probability threshold (0-1)">ℹ️</span>
+                                        </label>
+                                        <input type="number" id="creator-min_p" class="aqua-input" step="0.01" min="0" max="1" placeholder="0.0">
+                                        <span class="param-diff" id="diff-min_p"></span>
+                                    </div>
+                                    <div class="creator-param">
+                                        <label>
+                                            <span class="param-name">typical_p</span>
+                                            <span class="param-hint" title="Typical sampling probability">ℹ️</span>
+                                        </label>
+                                        <input type="number" id="creator-typical_p" class="aqua-input" step="0.05" min="0" max="1" placeholder="1.0">
+                                        <span class="param-diff" id="diff-typical_p"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Repetition Control -->
+                            <div class="creator-section">
+                                <div class="creator-section-header">
+                                    <h4>🔄 Repetition Control</h4>
+                                </div>
+                                <div class="creator-params-grid">
+                                    <div class="creator-param">
+                                        <label>
+                                            <span class="param-name">repeat_penalty</span>
+                                            <span class="param-hint" title="Penalty for repeating tokens (1.0 = no penalty)">ℹ️</span>
+                                        </label>
+                                        <input type="number" id="creator-repeat_penalty" class="aqua-input" step="0.1" min="0" max="2" placeholder="1.1">
+                                        <span class="param-diff" id="diff-repeat_penalty"></span>
+                                    </div>
+                                    <div class="creator-param">
+                                        <label>
+                                            <span class="param-name">repeat_last_n</span>
+                                            <span class="param-hint" title="How far back to look for repetitions. 0 = disabled">ℹ️</span>
+                                        </label>
+                                        <input type="number" id="creator-repeat_last_n" class="aqua-input" min="-1" max="1024" placeholder="64">
+                                        <span class="param-diff" id="diff-repeat_last_n"></span>
+                                    </div>
+                                    <div class="creator-param">
+                                        <label>
+                                            <span class="param-name">presence_penalty</span>
+                                            <span class="param-hint" title="Penalty for tokens already in context">ℹ️</span>
+                                        </label>
+                                        <input type="number" id="creator-presence_penalty" class="aqua-input" step="0.1" min="-2" max="2" placeholder="0.0">
+                                        <span class="param-diff" id="diff-presence_penalty"></span>
+                                    </div>
+                                    <div class="creator-param">
+                                        <label>
+                                            <span class="param-name">frequency_penalty</span>
+                                            <span class="param-hint" title="Penalty based on token frequency">ℹ️</span>
+                                        </label>
+                                        <input type="number" id="creator-frequency_penalty" class="aqua-input" step="0.1" min="-2" max="2" placeholder="0.0">
+                                        <span class="param-diff" id="diff-frequency_penalty"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Stop Sequences -->
+                            <div class="creator-section">
+                                <div class="creator-section-header">
+                                    <h4>🛑 Stop Sequences</h4>
+                                    <button class="aqua-btn tiny" onclick="App.addStopSequence()" style="margin-left: auto;">+ Add</button>
+                                </div>
+                                <div id="creator-stop-sequences" class="creator-stop-list">
+                                    <div class="creator-stop-item">
+                                        <input type="text" class="aqua-input stop-input" placeholder="Enter stop sequence...">
+                                        <button class="aqua-btn tiny danger" onclick="App.removeStopSequence(this)">✕</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Prompt Template -->
+                            <div class="creator-section">
+                                <div class="creator-section-header">
+                                    <h4>📝 Prompt Template</h4>
+                                    <span class="creator-hint">Define how prompts are formatted</span>
+                                </div>
+                                <textarea id="creator-template" class="aqua-textarea mono" rows="4" placeholder="Leave empty to use source model's template..."></textarea>
+                                <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                                    Template variables: {{ .System }}, {{ .Prompt }}, {{ .Response }}
+                                </p>
+                            </div>
+                            
+                            <!-- Message Examples -->
+                            <div class="creator-section">
+                                <div class="creator-section-header">
+                                    <h4>💬 Message Examples</h4>
+                                    <span class="creator-hint">Define example conversations for fine-tuning</span>
+                                </div>
+                                <textarea id="creator-message" class="aqua-textarea mono" rows="6" placeholder="Example conversation format:
+user: Hello, how are you?
+assistant: I'm doing well, thank you for asking! How can I help you today?
+
+user: Can you explain quantum physics?
+assistant: Quantum physics is a fundamental theory in physics that describes nature at the smallest scales..."></textarea>
+                                <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                                    Use "user:", "assistant:", or "system:" to define conversation examples
+                                </p>
+                            </div>
+                            
+                            <!-- Action Buttons - Moved into main content area -->
+                            <div class="creator-section creator-actions-section" style="margin-top: 20px; padding: 16px; background: linear-gradient(135deg, var(--bg-tertiary), var(--bg-secondary)); border-radius: 8px; border: 1px solid var(--border-color);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                                    <div id="creator-status" style="font-size: 12px; color: var(--text-muted);">
+                                        Ready to create a new model
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <button class="aqua-btn" onclick="App.previewModelCreation()" title="Preview the model configuration before creation">
+                                            👁️ Preview
+                                        </button>
+                                        <button class="aqua-btn primary" id="creator-create-btn" onclick="App.createNewModel()" title="Create the new model">
+                                            🚀 Create Model
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Validation Messages -->
+                <div id="creator-validation" class="creator-validation" style="display: none;">
+                    <!-- Validation messages will appear here -->
+                </div>
+            </div>
+            
+            <!-- Footer - Status only now -->
+            <div class="window-footer" style="display: flex; justify-content: center; align-items: center; padding: 8px 16px;">
+                <span style="font-size: 11px; color: var(--text-muted);">💡 Tip: Click on any parameter in Source Model to copy it to New Model</span>
+            </div>
+            
+            <!-- Resize handles -->
+            <div class="window-resize-handle window-resize-n"></div>
+            <div class="window-resize-handle window-resize-s"></div>
+            <div class="window-resize-handle window-resize-e"></div>
+            <div class="window-resize-handle window-resize-w"></div>
+            <div class="window-resize-handle window-resize-nw"></div>
+            <div class="window-resize-handle window-resize-ne"></div>
+            <div class="window-resize-handle window-resize-sw"></div>
+            <div class="window-resize-handle window-resize-se"></div>
+        </div>
         
     </div>
 
@@ -941,6 +1235,22 @@ require_once __DIR__ . '/api/config.php';
                     <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
                         <stop offset="0%" style="stop-color:#6366F1"/>
                         <stop offset="100%" style="stop-color:#8B5CF6"/>
+                    </linearGradient>
+                </defs>
+            </svg>
+        </div>
+        <div class="dock-item" data-window="modelcreator" title="Model Creator">
+            <div class="dock-tooltip">Model Creator</div>
+            <svg viewBox="0 0 100 100">
+                <rect x="10" y="10" width="80" height="80" rx="15" fill="url(#gradCreator)"/>
+                <circle cx="50" cy="45" r="18" fill="rgba(255,255,255,0.9)"/>
+                <rect x="47" y="27" width="6" height="36" rx="2" fill="#14B8A6"/>
+                <rect x="32" y="42" width="36" height="6" rx="2" fill="#14B8A6"/>
+                <rect x="30" y="68" width="40" height="6" rx="2" fill="rgba(255,255,255,0.7)"/>
+                <defs>
+                    <linearGradient id="gradCreator" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#14B8A6"/>
+                        <stop offset="100%" style="stop-color:#0D9488"/>
                     </linearGradient>
                 </defs>
             </svg>
