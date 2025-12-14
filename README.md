@@ -11,6 +11,8 @@ g023's OllamaMan - Ollama Manager is designed to simplify the management and uti
 
 ![Screenshot](screenshot.png)
 
+![Screenshot](screenshot_modelcreator.png)
+
 ### What is Ollama?
 
 Ollama is an open-source platform that enables running large language models locally on your hardware. It supports various model architectures and provides a REST API for programmatic access. Ollama Manager acts as a user-friendly frontend to this API, providing features like:
