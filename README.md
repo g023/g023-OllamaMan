@@ -3,7 +3,7 @@
 A comprehensive web-based dashboard for managing remote Ollama language model servers. This application provides an intuitive interface for model management, interactive chat, text generation, embeddings visualization, and server monitoring.
 
 ![PHP Version](https://img.shields.io/badge/PHP-7.4+-purple)
-![License](https://img.shields.io/badge/License-BSD%203--Clause-blue)
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue)](https://opensource.org/licenses/BSD-3-Clause)
 
 ## 📋 Overview
 
