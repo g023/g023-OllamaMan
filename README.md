@@ -7,7 +7,7 @@ A comprehensive web-based dashboard for managing remote Ollama language model se
 
 ## 📋 Overview
 
-Ollama Manager is designed to simplify the management and utilization of Ollama servers running on local networks or remote machines. It offers a unified web interface that eliminates the need for command-line interactions, making AI model deployment and usage accessible to users who prefer graphical interfaces.
+g023's OllamaMan - Ollama Manager is designed to simplify the management and utilization of Ollama servers running on local networks or remote machines. It offers a unified web interface that eliminates the need for command-line interactions, making AI model deployment and usage accessible to users who prefer graphical interfaces.
 
 ![Screenshot](screenshot.png)
 
