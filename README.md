@@ -1,4 +1,4 @@
-# 🦙 Ollama Manager
+# 🦙 g023's OllamaMan - Ollama Manager
 
 A comprehensive web-based dashboard for managing remote Ollama language model servers. This application provides an intuitive interface for model management, interactive chat, text generation, embeddings visualization, and server monitoring.
 
