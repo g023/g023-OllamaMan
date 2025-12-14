@@ -9,6 +9,8 @@ A comprehensive web-based dashboard for managing remote Ollama language model se
 
 Ollama Manager is designed to simplify the management and utilization of Ollama servers running on local networks or remote machines. It offers a unified web interface that eliminates the need for command-line interactions, making AI model deployment and usage accessible to users who prefer graphical interfaces.
 
+![Screenshot](screenshot.png)
+
 ### What is Ollama?
 
 Ollama is an open-source platform that enables running large language models locally on your hardware. It supports various model architectures and provides a REST API for programmatic access. Ollama Manager acts as a user-friendly frontend to this API, providing features like:
