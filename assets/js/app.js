@@ -31,7 +31,11 @@
             refreshInterval: null,
             spotlightVisible: false,
             chatHistoryCollapsed: true, // Default to hidden
-            chatSidebarWidth: 280 // Default sidebar width
+            chatSidebarWidth: 280, // Default sidebar width
+            // Token tracking for performance stats
+            streamingTokenCount: 0,
+            streamingFirstTokenTime: null,
+            streamingCharCount: 0
         },
 
         // API endpoints
@@ -1732,6 +1736,11 @@
             const self = this;
             this.state.isGenerating = true;
             
+            // Reset token tracking
+            this.state.streamingTokenCount = 0;
+            this.state.streamingFirstTokenTime = null;
+            this.state.streamingCharCount = 0;
+            
             // Show typing indicator
             $('#chat-typing').show();
             $('#chat-typing .typing-text').text(`${model} is thinking...`);
@@ -1780,7 +1789,20 @@
                                     const data = JSON.parse(line.slice(6));
                                     
                                     if (data.content) {
+                                        // Track first token time
+                                        if (self.state.streamingFirstTokenTime === null) {
+                                            self.state.streamingFirstTokenTime = Date.now();
+                                        }
+                                        
                                         fullContent += data.content;
+                                        
+                                        // Update token tracking (estimate: ~4 chars per token)
+                                        self.state.streamingCharCount += data.content.length;
+                                        self.state.streamingTokenCount = Math.ceil(self.state.streamingCharCount / 4);
+                                        
+                                        // Update live stats
+                                        self.updateStreamingStats();
+                                        
                                         $placeholder.find('.streaming-bubble').html(self.formatMessageContent(fullContent));
                                         self.scrollChatToBottom();
                                     }
@@ -1820,6 +1842,30 @@
                 $('#chat-typing').hide();
             });
         },
+        
+        // Update streaming stats in real-time
+        updateStreamingStats: function() {
+            if (this.state.streamingFirstTokenTime === null) return;
+            
+            const elapsedSec = (Date.now() - this.state.streamingFirstTokenTime) / 1000;
+            if (elapsedSec > 0) {
+                const tokensPerSec = (this.state.streamingTokenCount / elapsedSec).toFixed(1);
+                $('#chat-tokens-per-sec')
+                    .text(`Speed: ${tokensPerSec} tok/s`)
+                    .removeClass('speed-fast speed-good speed-medium speed-slow')
+                    .addClass(this.getSpeedClass(parseFloat(tokensPerSec)));
+                $('#chat-token-count').text(`Tokens: ~${this.state.streamingTokenCount}`);
+                $('#chat-response-time').text(`Time: ${elapsedSec.toFixed(1)}s`);
+            }
+        },
+        
+        // Get CSS class based on tokens/sec performance
+        getSpeedClass: function(tokensPerSec) {
+            if (tokensPerSec >= 30) return 'speed-fast';
+            if (tokensPerSec >= 15) return 'speed-good';
+            if (tokensPerSec >= 5) return 'speed-medium';
+            return 'speed-slow';
+        },
 
         finishStreaming: function($placeholder, content, startTime) {
             this.state.isGenerating = false;
@@ -1840,9 +1886,23 @@
                 content: content
             });
             
-            // Update stats
-            const duration = Date.now() - startTime;
-            $('#chat-response-time').text(`Response: ${(duration / 1000).toFixed(1)}s`);
+            // Update final stats with token performance
+            const totalDuration = Date.now() - startTime;
+            const streamingDuration = this.state.streamingFirstTokenTime 
+                ? (Date.now() - this.state.streamingFirstTokenTime) / 1000 
+                : totalDuration / 1000;
+            
+            // Calculate final tokens/sec (from first token)
+            if (this.state.streamingTokenCount > 0 && streamingDuration > 0) {
+                const finalTokPerSec = (this.state.streamingTokenCount / streamingDuration).toFixed(1);
+                $('#chat-tokens-per-sec')
+                    .text(`Speed: ${finalTokPerSec} tok/s`)
+                    .removeClass('speed-fast speed-good speed-medium speed-slow')
+                    .addClass(this.getSpeedClass(parseFloat(finalTokPerSec)));
+                $('#chat-token-count').text(`Tokens: ~${this.state.streamingTokenCount}`);
+            }
+            
+            $('#chat-response-time').text(`Time: ${(totalDuration / 1000).toFixed(1)}s`);
             this.updateChatStats();
             
             // Apply syntax highlighting
@@ -1865,6 +1925,9 @@
         sendNonStreamingMessage: function(model) {
             const self = this;
             this.state.isGenerating = true;
+            
+            // Reset token tracking
+            $('#chat-tokens-per-sec').text('Speed: --').removeClass('speed-fast speed-good speed-medium speed-slow');
             
             // Show typing indicator
             $('#chat-typing').show();
@@ -1895,11 +1958,20 @@
                         content: assistantMessage
                     });
                     
-                    // Update stats
+                    // Update stats with tokens/sec calculation
                     const duration = Date.now() - startTime;
-                    $('#chat-response-time').text(`Response: ${(duration / 1000).toFixed(1)}s`);
+                    const durationSec = duration / 1000;
+                    $('#chat-response-time').text(`Time: ${durationSec.toFixed(1)}s`);
+                    
+                    // Use eval_count from API response for accurate token count
                     if (response.data.eval_count) {
-                        $('#chat-token-count').text(`Tokens: ${response.data.eval_count}`);
+                        const tokenCount = response.data.eval_count;
+                        const tokensPerSec = (tokenCount / durationSec).toFixed(1);
+                        $('#chat-token-count').text(`Tokens: ${tokenCount}`);
+                        $('#chat-tokens-per-sec')
+                            .text(`Speed: ${tokensPerSec} tok/s`)
+                            .removeClass('speed-fast speed-good speed-medium speed-slow')
+                            .addClass(this.getSpeedClass(parseFloat(tokensPerSec)));
                     }
                     
                     // Generate smart suggestions
@@ -2768,7 +2840,7 @@
                 return;
             }
             
-            const html = history.slice(0, 30).map(item => {
+            const html = history.slice(0, 100).map(item => {
                 // Parse messages JSON string
                 let messages = [];
                 try {
@@ -2805,17 +2877,44 @@
         filterChatHistory: function(query) {
             if (!this.state.chatHistoryCache) return;
             
-            const filtered = query.trim() 
-                ? this.state.chatHistoryCache.filter(item => {
-                    const messages = typeof item.messages === 'string' 
-                        ? item.messages 
-                        : JSON.stringify(item.messages);
-                    return messages.toLowerCase().includes(query.toLowerCase()) ||
-                           item.model.toLowerCase().includes(query.toLowerCase());
-                })
-                : this.state.chatHistoryCache;
+            const $countEl = $('#chat-search-count');
+            const $clearBtn = $('#chat-search-clear');
+            
+            if (!query.trim()) {
+                // When search is cleared, show all history (up to 100)
+                $countEl.hide();
+                $clearBtn.hide();
+                this.renderChatHistory(this.state.chatHistoryCache);
+                return;
+            }
+            
+            // Show clear button when there's a search query
+            $clearBtn.show();
+            
+            const filtered = this.state.chatHistoryCache.filter(item => {
+                const messages = typeof item.messages === 'string' 
+                    ? item.messages 
+                    : JSON.stringify(item.messages);
+                return messages.toLowerCase().includes(query.toLowerCase()) ||
+                       item.model.toLowerCase().includes(query.toLowerCase());
+            });
+            
+            // Show result count
+            $countEl.text(`${filtered.length} result${filtered.length !== 1 ? 's' : ''} found`).show();
             
             this.renderChatHistory(filtered);
+        },
+        
+        // Clear history search and reset to full history
+        clearHistorySearch: function() {
+            $('#chat-history-search').val('');
+            $('#chat-search-clear').hide();
+            $('#chat-search-count').hide();
+            if (this.state.chatHistoryCache) {
+                this.renderChatHistory(this.state.chatHistoryCache);
+            } else {
+                this.loadChatHistory();
+            }
         },
 
         deleteChatHistory: function(chatId) {
@@ -3518,9 +3617,14 @@
                 }
             });
             
-            // Chat history search
+            // Chat history search with debounce
+            let searchDebounceTimer = null;
             $(document).on('input', '#chat-history-search', function() {
-                self.filterChatHistory($(this).val());
+                const query = $(this).val();
+                clearTimeout(searchDebounceTimer);
+                searchDebounceTimer = setTimeout(function() {
+                    self.filterChatHistory(query);
+                }, 200);
             });
             
             // Spotlight

@@ -298,13 +298,14 @@ require_once __DIR__ . '/api/config.php';
                     <div class="chat-sidebar" id="chat-sidebar" style="display: none;">
                         <div class="chat-sidebar-header">
                             <span style="font-weight: 600; font-size: 13px;">💬 History</span>
-                            <div style="display: flex; gap: 4px;">
-                                <button class="aqua-btn small" onclick="App.createNewChat()" title="New Chat">+ New</button>
-                                <button class="aqua-btn small" onclick="App.toggleChatSidebar()" title="Hide History (Ctrl+H)">✕</button>
-                            </div>
+                            <button class="aqua-btn small" onclick="App.toggleChatSidebar()" title="Hide History (Ctrl+H)">✕</button>
                         </div>
                         <div class="chat-sidebar-search">
-                            <input type="text" id="chat-history-search" class="aqua-input" placeholder="Search chats..." style="width: 100%; font-size: 12px;">
+                            <div class="search-input-wrapper">
+                                <input type="text" id="chat-history-search" class="aqua-input" placeholder="Search chats..." style="width: 100%; font-size: 12px; padding-right: 28px;">
+                                <button class="search-clear-btn" id="chat-search-clear" onclick="App.clearHistorySearch()" title="Clear search" style="display: none;">✕</button>
+                            </div>
+                            <div id="chat-search-count" class="search-result-count" style="display: none;"></div>
                         </div>
                         <div class="chat-history-list" id="chat-history-list">
                             <div class="empty-state p-3">
@@ -338,6 +339,9 @@ require_once __DIR__ . '/api/config.php';
                                 </div>
                             </div>
                             <div class="chat-header-right">
+                                <button class="aqua-btn small primary" onclick="App.createNewChat()" title="New Chat (Ctrl+Shift+N)">
+                                    ➕ New
+                                </button>
                                 <button class="aqua-btn small" id="chat-options-toggle" onclick="App.toggleChatOptions()" title="Options">
                                     ⚙️ Options
                                 </button>
@@ -452,7 +456,8 @@ require_once __DIR__ . '/api/config.php';
                         <!-- Chat Stats Bar -->
                         <div class="chat-stats-bar" id="chat-stats">
                             <span id="chat-token-count">Tokens: --</span>
-                            <span id="chat-response-time">Response: --</span>
+                            <span id="chat-tokens-per-sec" class="tokens-per-sec">Speed: --</span>
+                            <span id="chat-response-time">Time: --</span>
                             <span id="chat-message-count">Messages: 0</span>
                         </div>
                         

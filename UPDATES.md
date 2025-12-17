@@ -1,5 +1,33 @@
 # Ollama Manager Updates
 
+## December 17, 2025 - Advanced Chat Performance & UX Improvements
+
+### Tokens Per Second Counter
+- **Live Performance Tracking**: Real-time tokens/second display in chat stats bar
+- **Streaming Mode**: Timer starts from first token received (excludes model loading time)
+- **Non-Streaming Mode**: Uses exact token count from Ollama API response
+- **Color-Coded Speed Indicator**:
+  - 🟢 Green (≥30 tok/s): Excellent performance
+  - 🔵 Blue (≥15 tok/s): Good performance
+  - 🟡 Orange (≥5 tok/s): Moderate performance
+  - 🔴 Red (<5 tok/s): Slow performance
+- **Token Estimation**: For streaming, estimates ~4 characters per token
+
+### Chat History Search Improvements
+- **Expanded History**: Now shows up to 100 items (previously 30)
+- **Smart Reset**: Clearing search box resets to full history view
+- **Search Result Count**: Shows "X results found" when filtering
+- **Clear Button**: Added ✕ button inside search input for quick clearing
+- **Debounced Search**: 200ms debounce prevents lag while typing
+
+### New Chat Button Repositioned
+- **Moved to Header**: "+ New" button moved from History sidebar to main chat header
+- **Better Visibility**: Now alongside Options, Export, Clear buttons
+- **Primary Styling**: Styled as primary button for emphasis
+- **Keyboard Hint**: Title shows "Ctrl+Shift+N" shortcut
+
+---
+
 ## December 17, 2025 - UI/UX Improvements & Dark Mode Overhaul
 
 ### Chat History Sidebar
@@ -16,6 +44,28 @@
 ### Welcome Screen Behavior
 - Welcome screen with llama icon now properly hides when chat begins
 - Welcome screen reappears when chat is cleared
+
+### Options Panel Layout Fix
+- Fixed overlapping of input fields with temperature slider at narrow widths
+- Improved responsive grid with better minimum widths (180px vs 150px)
+
+### Settings Window Overhaul
+- Sidebar navigation now scrolls to corresponding sections smoothly
+- Save Settings button moved to sidebar footer for always-visible access
+- Added About section with version info and keyboard shortcuts reference
+- Improved visual hierarchy and spacing
+
+### Dark Theme Comprehensive Improvements
+- **Form Inputs**: Better contrast, visible borders (#4D4D5D), and clear focus states
+- **Window Chrome**: Improved titlebar gradients and text contrast
+- **Buttons**: Better gradient styling and hover states
+- **Chat Messages**: Improved assistant bubble readability
+- **Scrollbars**: Dark mode appropriate colors
+- **Notifications**: Better readability with proper background and border
+- **Badges**: Proper dark mode color schemes for success/warning/danger/info
+- **Model Lists & History Items**: Better hover and selected states
+- **Empty States**: Improved visibility of placeholder text
+- **Spotlight Search**: Dark theme styling
 
 ### Options Panel Layout Fix
 - Fixed overlapping of input fields with temperature slider at narrow widths

@@ -409,6 +409,49 @@
     border-bottom: 1px solid #E0E0E0;
 }
 
+/* Search input wrapper with clear button */
+.search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-input-wrapper input {
+    width: 100%;
+    padding-right: 28px;
+}
+
+.search-clear-btn {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #999;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    font-size: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+}
+
+.search-clear-btn:hover {
+    background: #666;
+}
+
+.search-result-count {
+    font-size: 10px;
+    color: var(--text-muted);
+    padding: 4px 0 0;
+    text-align: center;
+}
+
 .chat-history-list {
     flex: 1;
     overflow-y: auto;
@@ -916,6 +959,27 @@
     font-size: 11px;
     color: var(--text-muted);
     font-family: var(--font-mono);
+}
+
+/* Tokens per second speed indicator */
+.tokens-per-sec {
+    font-weight: 500;
+}
+
+.tokens-per-sec.speed-fast {
+    color: #10B981;
+}
+
+.tokens-per-sec.speed-good {
+    color: #3B82F6;
+}
+
+.tokens-per-sec.speed-medium {
+    color: #F59E0B;
+}
+
+.tokens-per-sec.speed-slow {
+    color: #EF4444;
 }
 
 /* Image Preview Area */
@@ -1958,6 +2022,36 @@
 [data-theme="dark"] .chat-stats-bar {
     background: #252535;
     border-color: #3D3D4D;
+}
+
+/* Dark mode tokens speed colors */
+[data-theme="dark"] .tokens-per-sec.speed-fast {
+    color: #34D399;
+}
+
+[data-theme="dark"] .tokens-per-sec.speed-good {
+    color: #60A5FA;
+}
+
+[data-theme="dark"] .tokens-per-sec.speed-medium {
+    color: #FBBF24;
+}
+
+[data-theme="dark"] .tokens-per-sec.speed-slow {
+    color: #F87171;
+}
+
+/* Dark mode search clear button */
+[data-theme="dark"] .search-clear-btn {
+    background: #666;
+}
+
+[data-theme="dark"] .search-clear-btn:hover {
+    background: #888;
+}
+
+[data-theme="dark"] .search-result-count {
+    color: #888;
 }
 
 [data-theme="dark"] .chat-action-btn {
