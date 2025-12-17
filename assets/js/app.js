@@ -29,7 +29,9 @@
             windows: {},
             activeWindow: null,
             refreshInterval: null,
-            spotlightVisible: false
+            spotlightVisible: false,
+            chatHistoryCollapsed: true, // Default to hidden
+            chatSidebarWidth: 280 // Default sidebar width
         },
 
         // API endpoints
@@ -109,6 +111,85 @@
             this.initChatPaste();
             this.initChatOptionsListeners();
             this.checkVoiceInputAvailability();
+            this.initChatSidebarResize();
+            this.restoreChatSidebarState();
+        },
+        
+        // Restore chat sidebar state from localStorage
+        restoreChatSidebarState: function() {
+            const collapsed = localStorage.getItem('chatHistoryCollapsed');
+            const width = localStorage.getItem('chatSidebarWidth');
+            
+            // Default to collapsed (hidden)
+            this.state.chatHistoryCollapsed = collapsed !== 'false';
+            this.state.chatSidebarWidth = width ? parseInt(width) : 280;
+            
+            this.updateChatSidebarUI();
+        },
+        
+        // Toggle chat sidebar visibility
+        toggleChatSidebar: function() {
+            this.state.chatHistoryCollapsed = !this.state.chatHistoryCollapsed;
+            localStorage.setItem('chatHistoryCollapsed', this.state.chatHistoryCollapsed);
+            this.updateChatSidebarUI();
+        },
+        
+        // Update chat sidebar UI based on state
+        updateChatSidebarUI: function() {
+            const $sidebar = $('#chat-sidebar');
+            const $divider = $('#chat-sidebar-divider');
+            const $toggleBtn = $('#chat-history-toggle');
+            
+            if (this.state.chatHistoryCollapsed) {
+                $sidebar.hide();
+                $divider.hide();
+                $toggleBtn.removeClass('active');
+            } else {
+                $sidebar.show().css('width', this.state.chatSidebarWidth + 'px');
+                $divider.show();
+                $toggleBtn.addClass('active');
+            }
+        },
+        
+        // Initialize chat sidebar resize functionality
+        initChatSidebarResize: function() {
+            const self = this;
+            const $divider = $('#chat-sidebar-divider');
+            const $sidebar = $('#chat-sidebar');
+            let isResizing = false;
+            let startX = 0;
+            let startWidth = 0;
+            
+            $divider.on('mousedown', function(e) {
+                e.preventDefault();
+                isResizing = true;
+                startX = e.clientX;
+                startWidth = $sidebar.width();
+                $('body').addClass('resizing');
+                $divider.addClass('active');
+            });
+            
+            $(document).on('mousemove', function(e) {
+                if (!isResizing) return;
+                
+                const deltaX = e.clientX - startX;
+                let newWidth = startWidth + deltaX;
+                
+                // Constrain width between 200 and 450
+                newWidth = Math.max(200, Math.min(450, newWidth));
+                
+                $sidebar.css('width', newWidth + 'px');
+                self.state.chatSidebarWidth = newWidth;
+            });
+            
+            $(document).on('mouseup', function() {
+                if (isResizing) {
+                    isResizing = false;
+                    $('body').removeClass('resizing');
+                    $divider.removeClass('active');
+                    localStorage.setItem('chatSidebarWidth', self.state.chatSidebarWidth);
+                }
+            });
         },
         
         // Check if voice input is available and hide button if not
@@ -176,7 +257,7 @@
                         $('#setting-theme').val(response.data.theme || 'aqua');
                         $('#setting-default-model').val(response.data.defaultModel || '');
                         $('#setting-temperature').val(response.data.temperature || 0.7);
-                        $('#setting-max-tokens').val(response.data.maxTokens || 2048);
+                        $('#setting-max-tokens').val(response.data.maxTokens || 8192);
                         $('#setting-auto-refresh').val(response.data.autoRefreshInterval || 30);
                         $('#setting-notifications').prop('checked', response.data.showNotifications !== false);
                         $('#setting-ollama-host').val(response.data.ollamaHost || '192.168.1.134');
@@ -1606,9 +1687,11 @@
                 return;
             }
             
-            // Clear welcome screen if first message
+            // Clear welcome screen if first message and hide it
             if (this.state.chatMessages.length === 0) {
                 $('#chat-messages').empty();
+                // Remove the welcome screen class content
+                $('.chat-welcome').remove();
             }
             
             // Build user message with optional images
@@ -1664,11 +1747,16 @@
             let fullContent = '';
             const startTime = Date.now();
             
+            // Create AbortController for cancellation
+            const abortController = new AbortController();
+            this.state.abortController = abortController;
+            
             // Use fetch with streaming for SSE
             fetch(this.api.chatStream, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
+                signal: abortController.signal
             })
             .then(response => {
                 const reader = response.body.getReader();
@@ -1717,6 +1805,15 @@
                 return processStream();
             })
             .catch(error => {
+                // Don't show error if it was aborted
+                if (error.name === 'AbortError') {
+                    self.finishStreaming($placeholder, fullContent, startTime);
+                    return;
+                }
+                
+                // Clear abort controller on error
+                self.state.abortController = null;
+                
                 console.error('Streaming error:', error);
                 $placeholder.find('.streaming-bubble').html(`<span style="color: #EF4444;">Error: Connection failed</span>`);
                 self.state.isGenerating = false;
@@ -1727,6 +1824,9 @@
         finishStreaming: function($placeholder, content, startTime) {
             this.state.isGenerating = false;
             $('#chat-typing').hide();
+            
+            // Clear abort controller
+            this.state.abortController = null;
             
             // Remove streaming class
             $placeholder.find('.streaming-bubble').removeClass('streaming-bubble');
@@ -1898,6 +1998,12 @@
                 this.state.chatEventSource.close();
                 this.state.chatEventSource = null;
             }
+            
+            if (this.state.abortController) {
+                this.state.abortController.abort();
+                this.state.abortController = null;
+            }
+            
             this.state.isGenerating = false;
             $('#chat-typing').hide();
             this.showNotification('info', 'Stopped', 'Generation stopped');
@@ -2671,16 +2777,19 @@
                     console.warn('Failed to parse messages for chat item:', item.id, e);
                 }
                 
-                // Get preview from first user message
+                // Get preview from first user message - truncate to 35 characters
                 const userMessage = messages.find(m => m.role === 'user');
-                const preview = userMessage ? userMessage.content.substring(0, 50) : 'Empty';
+                let preview = userMessage ? userMessage.content : 'Empty';
+                if (preview.length > 35) {
+                    preview = preview.substring(0, 35) + '...';
+                }
                 const starred = item.starred ? 'starred' : '';
                 
                 return `
                     <div class="chat-history-item ${starred}" data-id="${item.id}">
                         <div class="chat-history-content">
                             <div class="chat-history-model">${this.escapeHtml(item.model)}</div>
-                            <div class="chat-history-preview">${this.escapeHtml(preview)}...</div>
+                            <div class="chat-history-preview" title="${this.escapeHtml(userMessage ? userMessage.content.substring(0, 100) : '')}">${this.escapeHtml(preview)}</div>
                             <div class="chat-history-time">${item.timestamp}</div>
                         </div>
                         <div class="chat-history-actions">
@@ -2754,6 +2863,9 @@
         // SETTINGS UI
         // ============================================
         saveSettingsForm: function() {
+            const $btn = $('.settings-save-btn');
+            $btn.prop('disabled', true).text('💾 Saving...');
+            
             const settings = {
                 theme: $('#setting-theme').val(),
                 defaultModel: $('#setting-default-model').val(),
@@ -2781,7 +2893,25 @@
                 })
                 .fail(() => {
                     this.showNotification('error', 'Error', 'Failed to save settings');
+                })
+                .always(() => {
+                    $btn.prop('disabled', false).text('💾 Save Settings');
                 });
+        },
+        
+        // Navigate to settings section
+        scrollToSettingsSection: function(sectionId) {
+            // Update active nav item
+            $('.settings-nav-item').removeClass('active');
+            $(`.settings-nav-item[data-section="${sectionId}"]`).addClass('active');
+            
+            // Scroll to section
+            const $section = $(`#settings-section-${sectionId}`);
+            if ($section.length) {
+                const $content = $('.settings-content');
+                const scrollTop = $section[0].offsetTop - $content[0].offsetTop;
+                $content.animate({ scrollTop: scrollTop }, 300);
+            }
         },
 
         // ============================================
@@ -3255,6 +3385,15 @@
                 if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
                     e.preventDefault();
                     this.toggleSpotlight();
+                }
+                
+                // Cmd/Ctrl + H for Chat History Toggle
+                if ((e.metaKey || e.ctrlKey) && e.key === 'h') {
+                    e.preventDefault();
+                    // Only toggle if chat window is active
+                    if (this.state.activeWindow === 'window-chat' || $('#window-chat').hasClass('visible')) {
+                        this.toggleChatSidebar();
+                    }
                 }
                 
                 // Escape to close spotlight or windows

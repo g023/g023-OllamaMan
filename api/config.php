@@ -31,8 +31,8 @@ define('OLLAMA_API_VERSION', OLLAMA_BASE_URL . '/api/version');
 
 // Timeout Settings (in seconds)
 define('OLLAMA_TIMEOUT_CONNECT', 5);
-define('OLLAMA_TIMEOUT_EXECUTE', 300); // 5 minutes for long generations
-define('OLLAMA_TIMEOUT_PULL', 3600); // 1 hour for model downloads
+define('OLLAMA_TIMEOUT_EXECUTE', 1800); // 30 minutes for long generations
+define('OLLAMA_TIMEOUT_PULL', 7200); // 2 hour for model downloads
 
 // Application Settings
 define('APP_NAME', 'Ollama Manager');

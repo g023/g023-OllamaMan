@@ -294,11 +294,14 @@ require_once __DIR__ . '/api/config.php';
             </div>
             <div class="window-content">
                 <div class="chat-container">
-                    <!-- Chat Sidebar -->
-                    <div class="chat-sidebar">
+                    <!-- Chat Sidebar (hidden by default) -->
+                    <div class="chat-sidebar" id="chat-sidebar" style="display: none;">
                         <div class="chat-sidebar-header">
                             <span style="font-weight: 600; font-size: 13px;">💬 History</span>
-                            <button class="aqua-btn small" onclick="App.createNewChat()" title="New Chat">+ New</button>
+                            <div style="display: flex; gap: 4px;">
+                                <button class="aqua-btn small" onclick="App.createNewChat()" title="New Chat">+ New</button>
+                                <button class="aqua-btn small" onclick="App.toggleChatSidebar()" title="Hide History (Ctrl+H)">✕</button>
+                            </div>
                         </div>
                         <div class="chat-sidebar-search">
                             <input type="text" id="chat-history-search" class="aqua-input" placeholder="Search chats..." style="width: 100%; font-size: 12px;">
@@ -310,11 +313,17 @@ require_once __DIR__ . '/api/config.php';
                         </div>
                     </div>
                     
+                    <!-- Resizable Divider for Chat Sidebar -->
+                    <div class="chat-sidebar-divider" id="chat-sidebar-divider" style="display: none;"></div>
+                    
                     <!-- Chat Main Area -->
                     <div class="chat-main">
                         <!-- Chat Header with Model Selection and Options -->
                         <div class="chat-header">
                             <div class="chat-header-left">
+                                <button class="aqua-btn small" id="chat-history-toggle" onclick="App.toggleChatSidebar()" title="Toggle History (Ctrl+H)">
+                                    📋 History
+                                </button>
                                 <div class="chat-model-selector">
                                     <label style="font-size: 11px; color: var(--text-secondary);">Model:</label>
                                     <select id="chat-model-select" class="aqua-select model-selector" style="width: 180px;">
@@ -365,11 +374,11 @@ require_once __DIR__ . '/api/config.php';
                                 </div>
                                 <div class="chat-option-item">
                                     <label>📊 Max Tokens</label>
-                                    <input type="number" id="chat-max-tokens" class="aqua-input" value="2048" min="1" max="128000">
+                                    <input type="number" id="chat-max-tokens" class="aqua-input" value="8192" min="1" max="128000">
                                 </div>
                                 <div class="chat-option-item">
                                     <label>🪟 Context Size</label>
-                                    <input type="number" id="chat-context-size" class="aqua-input" value="4096" min="512" max="131072">
+                                    <input type="number" id="chat-context-size" class="aqua-input" value="16384" min="512" max="131072">
                                 </div>
                                 <div class="chat-option-item">
                                     <label>🎲 Seed (reproducibility)</label>
@@ -775,29 +784,32 @@ require_once __DIR__ . '/api/config.php';
             <div class="window-content">
                 <div class="settings-container">
                     <div class="settings-sidebar">
-                        <div class="settings-nav-item active" data-section="general">
-                            <span class="settings-nav-icon">⚙️</span>
-                            <span>General</span>
+                        <div class="settings-nav-items">
+                            <div class="settings-nav-item active" data-section="general" onclick="App.scrollToSettingsSection('general')">
+                                <span class="settings-nav-icon">⚙️</span>
+                                <span>General</span>
+                            </div>
+                            <div class="settings-nav-item" data-section="server" onclick="App.scrollToSettingsSection('server')">
+                                <span class="settings-nav-icon">🖥️</span>
+                                <span>Server</span>
+                            </div>
+                            <div class="settings-nav-item" data-section="models" onclick="App.scrollToSettingsSection('models')">
+                                <span class="settings-nav-icon">🤖</span>
+                                <span>Models</span>
+                            </div>
+                            <div class="settings-nav-item" data-section="about" onclick="App.scrollToSettingsSection('about')">
+                                <span class="settings-nav-icon">ℹ️</span>
+                                <span>About</span>
+                            </div>
                         </div>
-                        <div class="settings-nav-item" data-section="server">
-                            <span class="settings-nav-icon">🖥️</span>
-                            <span>Server</span>
-                        </div>
-                        <div class="settings-nav-item" data-section="appearance">
-                            <span class="settings-nav-icon">🎨</span>
-                            <span>Appearance</span>
-                        </div>
-                        <div class="settings-nav-item" data-section="models">
-                            <span class="settings-nav-icon">🤖</span>
-                            <span>Models</span>
-                        </div>
-                        <div class="settings-nav-item" data-section="about">
-                            <span class="settings-nav-icon">ℹ️</span>
-                            <span>About</span>
+                        <div class="settings-sidebar-footer">
+                            <button class="aqua-btn primary settings-save-btn" onclick="App.saveSettingsForm()">
+                                💾 Save Settings
+                            </button>
                         </div>
                     </div>
                     <div class="settings-content">
-                        <div class="settings-section">
+                        <div class="settings-section" id="settings-section-general">
                             <h2>General Settings</h2>
                             
                             <div class="settings-row">
@@ -849,7 +861,7 @@ require_once __DIR__ . '/api/config.php';
                             </div>
                         </div>
                         
-                        <div class="settings-section">
+                        <div class="settings-section" id="settings-section-server">
                             <h2>Server Settings</h2>
                             
                             <div class="settings-row">
@@ -873,7 +885,7 @@ require_once __DIR__ . '/api/config.php';
                             </div>
                         </div>
                         
-                        <div class="settings-section">
+                        <div class="settings-section" id="settings-section-models">
                             <h2>Model Settings</h2>
                             
                             <div class="settings-row">
@@ -892,15 +904,28 @@ require_once __DIR__ . '/api/config.php';
                                     <small>Maximum tokens for generation</small>
                                 </div>
                                 <div class="settings-control">
-                                    <input type="number" id="setting-max-tokens" class="aqua-input" value="2048" min="1" max="128000" style="width: 100px;">
+                                    <input type="number" id="setting-max-tokens" class="aqua-input" value="8192" min="1" max="128000" style="width: 100px;">
                                 </div>
                             </div>
                         </div>
                         
-                        <div style="margin-top: 24px;">
-                            <button class="aqua-btn primary" onclick="App.saveSettingsForm()">
-                                💾 Save Settings
-                            </button>
+                        <div class="settings-section" id="settings-section-about">
+                            <h2>About</h2>
+                            <div class="settings-row">
+                                <div class="settings-label">
+                                    <span>Ollama Manager</span>
+                                    <small>Version 1.0.0</small>
+                                </div>
+                                <div class="settings-control">
+                                    <span style="font-size: 12px; color: var(--text-muted);">🦙</span>
+                                </div>
+                            </div>
+                            <div class="settings-row">
+                                <div class="settings-label">
+                                    <span>Keyboard Shortcuts</span>
+                                    <small>Ctrl+K: Spotlight, Ctrl+H: Toggle History</small>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

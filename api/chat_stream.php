@@ -36,7 +36,7 @@ if (ob_get_level()) {
 }
 
 // Set time limit for long responses
-set_time_limit(300);
+set_time_limit(1800);
 
 // Helper to send SSE event
 function sendSSE($event, $data) {
